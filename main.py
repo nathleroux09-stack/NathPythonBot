@@ -9,7 +9,7 @@ import threading
 # ==============================================================================
 # CONFIGURATION LICHESS
 # ==============================================================================
-montoken = "VOTRE_TOKEN_ICI"  # <-- Place ton token Lichess ici
+montoken = "lip_U71EPJtbVXcTRdoNo5xc"  # <-- Place ton token Lichess ici
 
 # ==============================================================================
 # 1. LIVRE D'OUVERTURES
