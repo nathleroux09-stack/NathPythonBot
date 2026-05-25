@@ -974,68 +974,76 @@ def handle_game(game_id, color):
 
 def main_event_loop():
     """Boucle principale qui écoute les flux d'événements Lichess (défis et débuts de parties)."""
-    print("[CONNEXION] Écoute des événements Lichess en cours...")
     url = "https://lichess.org/api/stream/event"
     
-    try:
-        response = requests.get(url, headers=headers, stream=True)
-        for line in response.iter_lines():
-            if not line: continue
-            event = json.loads(line.decode('utf-8'))
+    while True:  # <-- La boucle infinie pour garantir que le bot reste en vie
+        print("[CONNEXION] Tentative de connexion au flux d'événements Lichess...")
+        
+        try:
+            response = requests.get(url, headers=headers, stream=True)
             
-            # --- 1. GESTION DES DÉFIS ENTRANTS ---
-            if event.get('type') == 'challenge':
-                challenge = event['challenge']
-                challenge_id = challenge['id']
-                challenger = challenge['challenger']['id']
-                variant = challenge['variant']['key']
-                time_control = challenge['timeControl']
-                
-                # Vérification 1 : Déjà en cours de partie
-                if is_playing:
-                    print(f"[DÉFI] Refusé à {challenger} (Bot actuellement occupé).")
-                    requests.post(f"https://lichess.org/api/challenge/{challenge_id}/decline", headers=headers, data={'reason': 'generic'})
-                    continue
-                
-                # Vérification 2 : Uniquement échecs standard
-                if variant != 'standard':
-                    print(f"[DÉFI] Refusé à {challenger} (Variante '{variant}' non supportée).")
-                    send_pm(challenger, "try a longer Time controle")
-                    requests.post(f"https://lichess.org/api/challenge/{challenge_id}/decline", headers=headers, data={'reason': 'variant'})
-                    continue
-                
-                # Vérification 3 : Filtrer les cadences acceptables
-                if time_control['type'] != 'clock':
-                    print(f"[DÉFI] Refusé à {challenger} (Pas de cadence de temps définie).")
-                    send_pm(challenger, "try a longer Time controle")
-                    requests.post(f"https://lichess.org/api/challenge/{challenge_id}/decline", headers=headers, data={'reason': 'timeControl'})
-                    continue
-                    
-                base_time = time_control.get('limit', 0)       # en secondes
-                increment = time_control.get('increment', 0)   # en secondes
-                
-                # Condition stricte : minimum 1s de base ET minimum 10s d'incrément
-                if base_time < 1 or increment < 10:
-                    print(f"[DÉFI] Refusé à {challenger} (Cadence {base_time}+{increment} trop rapide ou incrément < 10s).")
-                    send_pm(challenger, "try a longer Time controle")
-                    requests.post(f"https://lichess.org/api/challenge/{challenge_id}/decline", headers=headers, data={'reason': 'timeControl'})
-                else:
-                    print(f"[DÉFI] Accepté de {challenger} (Cadence: {base_time}+{increment}).")
-                    requests.post(f"https://lichess.org/api/challenge/{challenge_id}/accept", headers=headers)
+            # Vérification très importante : Lichess a-t-il accepté notre token ?
+            if response.status_code != 200:
+                print(f"[ERREUR FATALE] Lichess a refusé la connexion (Code {response.status_code}).")
+                print(f"Message de Lichess : {response.text}")
+                print("Vérifiez votre token et ses permissions (scopes).")
+                time.sleep(10)
+                continue # On attend et on réessaie
 
-            # --- 2. LANCEMENT DE LA PARTIE ---
-            elif event.get('type') == 'gameStart':
-                game_id = event['game']['id']
-                color = event['game']['color']
-                # Lancement de la partie dans un thread dédié pour ne pas bloquer les autres requêtes d'événements
-                t = threading.Thread(target=handle_game, args=(game_id, color))
-                t.start()
+            print("[SUCCÈS] Connecté au flux ! Le bot est maintenant EN LIGNE.")
+            
+            for line in response.iter_lines():
+                if not line: continue
+                event = json.loads(line.decode('utf-8'))
                 
-    except Exception as e:
-        print(f"Erreur critique dans la boucle principale : {e}")
-        print("Reconnexion dans 5 secondes...")
+                # --- 1. GESTION DES DÉFIS ENTRANTS ---
+                if event.get('type') == 'challenge':
+                    challenge = event['challenge']
+                    challenge_id = challenge['id']
+                    challenger = challenge['challenger']['id']
+                    variant = challenge['variant']['key']
+                    time_control = challenge['timeControl']
+                    
+                    if is_playing:
+                        print(f"[DÉFI] Refusé à {challenger} (Bot actuellement occupé).")
+                        requests.post(f"https://lichess.org/api/challenge/{challenge_id}/decline", headers=headers, data={'reason': 'generic'})
+                        continue
+                    
+                    if variant != 'standard':
+                        print(f"[DÉFI] Refusé à {challenger} (Variante '{variant}' non supportée).")
+                        send_pm(challenger, "Please try standard chess.")
+                        requests.post(f"https://lichess.org/api/challenge/{challenge_id}/decline", headers=headers, data={'reason': 'variant'})
+                        continue
+                    
+                    if time_control['type'] != 'clock':
+                        print(f"[DÉFI] Refusé à {challenger} (Pas de cadence de temps définie).")
+                        send_pm(challenger, "Please use a timed game.")
+                        requests.post(f"https://lichess.org/api/challenge/{challenge_id}/decline", headers=headers, data={'reason': 'timeControl'})
+                        continue
+                        
+                    base_time = time_control.get('limit', 0)
+                    increment = time_control.get('increment', 0)
+                    
+                    if base_time < 1 or increment < 10:
+                        print(f"[DÉFI] Refusé à {challenger} (Cadence {base_time}+{increment} trop rapide).")
+                        send_pm(challenger, "Time control too fast. Need at least 10s increment.")
+                        requests.post(f"https://lichess.org/api/challenge/{challenge_id}/decline", headers=headers, data={'reason': 'timeControl'})
+                    else:
+                        print(f"[DÉFI] Accepté de {challenger} (Cadence: {base_time}+{increment}).")
+                        requests.post(f"https://lichess.org/api/challenge/{challenge_id}/accept", headers=headers)
+
+                # --- 2. LANCEMENT DE LA PARTIE ---
+                elif event.get('type') == 'gameStart':
+                    game_id = event['game']['id']
+                    color = event['game']['color']
+                    t = threading.Thread(target=handle_game, args=(game_id, color))
+                    t.start()
+                    
+        except Exception as e:
+            print(f"[ERREUR CRITIQUE] Perte de connexion : {e}")
+            
+        print("[DÉCONNEXION] Le flux s'est arrêté. Reconnexion dans 5 secondes...")
         time.sleep(5)
-        main_event_loop()
 
 if __name__ == "__main__":
     if montoken == "VOTRE_TOKEN_ICI":
