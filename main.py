@@ -721,7 +721,7 @@ def evaluate_board(board):
                 if file_idx < 7 and chess.square(file_idx + 1, rank_idx + 1) in friendly_pawns:
                     v_mg += PENALTY_BISHOP_BLOCKED_BY_PAWN; v_eg += PENALTY_BISHOP_BLOCKED_BY_PAWN
             elif color == chess.BLACK and rank_idx > 0:
-                if file_idx > 0 && chess.square(file_idx - 1, rank_idx - 1) in friendly_pawns:
+                if file_idx > 0 and chess.square(file_idx - 1, rank_idx - 1) in friendly_pawns:
                     v_mg += PENALTY_BISHOP_BLOCKED_BY_PAWN; v_eg += PENALTY_BISHOP_BLOCKED_BY_PAWN
                 if file_idx < 7 and chess.square(file_idx + 1, rank_idx - 1) in friendly_pawns:
                     v_mg += PENALTY_BISHOP_BLOCKED_BY_PAWN; v_eg += PENALTY_BISHOP_BLOCKED_BY_PAWN
